@@ -69,8 +69,8 @@ public class HotProductTopology {
             System.exit(1);
         }
 
-        //启动往kafka发送数据
-        sendMsg();
+        //启动往kafka发送数据。这里是请求通过nginx，在lua中往kafka发送数据
+        //sendMsg();
         logger.info("storm启动成功...");
     }
 
