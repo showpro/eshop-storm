@@ -13,6 +13,7 @@
     </properties>
 
     <dependencies>
+        <!--storm相关jar -->
         <dependency>
             <groupId>org.apache.storm</groupId>
             <artifactId>storm-core</artifactId>
@@ -66,6 +67,13 @@
             <artifactId>lombok</artifactId>
             <version>1.18.14</version>
             <scope>provided</scope>
+        </dependency>
+
+        <!--fastjson 相关jar -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.61</version>
         </dependency>
 
     </dependencies>
@@ -132,6 +140,14 @@
                     <includePluginDependencies>false</includePluginDependencies>
                     <classpathScope>compile</classpathScope>
                     <mainClass>com.zhan.eshop.storm.HotProductTopology</mainClass>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
                 </configuration>
             </plugin>
         </plugins>
