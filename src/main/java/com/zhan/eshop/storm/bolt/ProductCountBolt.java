@@ -76,9 +76,13 @@ public class ProductCountBolt extends BaseRichBolt {
         zkSession.releaseDistributedLock();
     }
 
+    /**
+     * 在storm拓扑中加入热点数据缓存实时自动识别和感知的代码逻辑
+     */
     private class HotProductFindThread implements Runnable {
 
         @SuppressWarnings("deprecation")
+        @Override
         public void run() {
             List<Map.Entry<Long, Long>> productCountList = new ArrayList<Map.Entry<Long, Long>>();
             List<Long> hotProductIdList = new ArrayList<Long>();
@@ -104,6 +108,7 @@ public class ProductCountBolt extends BaseRichBolt {
 
                     for(Map.Entry<Long, Long> productCountEntry : productCountMap.entrySet()) {
                         if(productCountList.size() == 0) {
+                            // 如果刚开始时商品访问次数列表大小为0，就先放一条数据进去
                             productCountList.add(productCountEntry);
                         } else {
                             // 比较大小，生成最热topn的算法有很多种
@@ -142,10 +147,12 @@ public class ProductCountBolt extends BaseRichBolt {
                     int calculateCount = (int)Math.floor(productCountList.size() * 0.95);
 
                     Long totalCount = 0L;
-                    for(int i = productCountList.size() - 1; i >= productCountList.size() - calculateCount; i--) {
+                    for(int i = productCountList.size() - 1; i >= productCountList.size() - calculateCount; i--) {//比如productCountList大小10个，calculateCount=7，遍历最后7个，那么从第4个开始往后遍历，下标为3
+                        //累加
                         totalCount += productCountList.get(i).getValue();
                     }
 
+                    // 算平均值
                     Long avgCount = totalCount / calculateCount;
 
                     LOGGER.info("【HotProductFindThread计算出95%的商品的访问次数平均值】avgCount=" + avgCount);
@@ -153,25 +160,27 @@ public class ProductCountBolt extends BaseRichBolt {
                     // 3、从第一个元素开始遍历，判断是否是平均值得10倍
                     for(Map.Entry<Long, Long> productCountEntry : productCountList) {
                         if(productCountEntry.getValue() > 10 * avgCount) {
+                            // 如果商品访问次数大于10倍的平均值，认为是一个热点，放入热点集合中去
                             LOGGER.info("【HotProductFindThread发现一个热点】productCountEntry=" + productCountEntry);
                             hotProductIdList.add(productCountEntry.getKey());
 
                             if(!lastTimeHotProductIdList.contains(productCountEntry.getKey())) {
-                                // 将缓存热点反向推送到流量分发的nginx中
-                                String distributeNginxURL = "http://192.168.133.227/hot?productId=" + productCountEntry.getKey();
+                                // (1)将缓存热点反向推送到流量分发的nginx服务器中
+                                String distributeNginxURL = "http://192.168.133.129/hot?productId=" + productCountEntry.getKey();//给流量分发的nginx的hot接口发一个productId，接口收到请求，将productId放到本地缓存
                                 HttpClientUtils.sendGetRequest(distributeNginxURL);
 
-                                // 将缓存热点，那个商品对应的完整的缓存数据，发送请求到缓存服务去获取，反向推送到所有的后端应用nginx服务器上去
-                                String cacheServiceURL = "http://192.168.133.179:8080/getProductInfo?productId=" + productCountEntry.getKey();
+                                // (2)将缓存热点，那个商品对应的完整的缓存数据，发送请求到缓存服务去获取
+                                String cacheServiceURL = "http://192.168.0.102:8080/getProductInfo?productId=" + productCountEntry.getKey();//缓存服务的地址
                                 String response = HttpClientUtils.sendGetRequest(cacheServiceURL);
 
                                 List<NameValuePair> params = new ArrayList<NameValuePair>();
                                 params.add(new BasicNameValuePair("productInfo", response));
                                 String productInfo = URLEncodedUtils.format(params, HTTP.UTF_8);
 
+                                // 然后反向推送到所有的后端应用nginx服务器上去
                                 String[] appNginxURLs = new String[]{
-                                    "http://192.168.133.187/hot?productId=" + productCountEntry.getKey() + "&" + productInfo,
-                                    "http://192.168.133.19/hot?productId=" + productCountEntry.getKey() + "&" + productInfo
+                                    "http://192.168.133.133/hot?productId=" + productCountEntry.getKey() + "&" + productInfo,
+                                    "http://192.168.133.129/hot?productId=" + productCountEntry.getKey() + "&" + productInfo
                                 };
 
                                 for(String appNginxURL : appNginxURLs) {
@@ -182,27 +191,27 @@ public class ProductCountBolt extends BaseRichBolt {
                     }
 
                     // 4、实时感知热点数据的消失
-                    if(lastTimeHotProductIdList.size() == 0) {
-                        if(hotProductIdList.size() > 0) {
+                    if(lastTimeHotProductIdList.size() == 0) {//上一次没有热点数据
+                        if(hotProductIdList.size() > 0) {//这一次的热点缓存有
                             for(Long productId : hotProductIdList) {
-                                lastTimeHotProductIdList.add(productId);
+                                lastTimeHotProductIdList.add(productId);//把这一次的热点数据加到上一次的热点列表中
                             }
                             LOGGER.info("【HotProductFindThread保存上次热点数据】lastTimeHotProductIdList=" + lastTimeHotProductIdList);
                         }
-                    } else {
+                    } else {//如果上一次热点列表不为空
                         for(Long productId : lastTimeHotProductIdList) {
-                            if(!hotProductIdList.contains(productId)) {
+                            if(!hotProductIdList.contains(productId)) {//如果现在的热点集合不包含上次的
                                 LOGGER.info("【HotProductFindThread发现一个热点消失了】productId=" + productId);
                                 // 说明上次的那个商品id的热点，消失了
                                 // 发送一个http请求给到流量分发的nginx中，取消热点缓存的标识
-                                String url = "http://192.168.133.227/cancel_hot?productId=" + productId;
+                                String url = "http://192.168.133.129/cancel_hot?productId=" + productId;
                                 HttpClientUtils.sendGetRequest(url);
                             }
                         }
 
-                        if(hotProductIdList.size() > 0) {
-                            lastTimeHotProductIdList.clear();
-                            for(Long productId : hotProductIdList) {
+                        if(hotProductIdList.size() > 0) {//如果当前的热点集合大于0
+                            lastTimeHotProductIdList.clear();//那么把上一次的热点集合清空
+                            for(Long productId : hotProductIdList) {//把当前集合中的热点加入上一次的集合中
                                 lastTimeHotProductIdList.add(productId);
                             }
                             LOGGER.info("【HotProductFindThread保存上次热点数据】lastTimeHotProductIdList=" + lastTimeHotProductIdList);
@@ -220,6 +229,9 @@ public class ProductCountBolt extends BaseRichBolt {
 
     }
 
+    /**
+     *  Top N 热门商品列表，即热数据（注意 "热数据" 和 "热点数据"不是同一个概念）
+     */
     private class ProductCountThread implements Runnable {
 
         @Override
