@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.zhan.eshop.storm.constant.Constants;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -46,17 +47,69 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
 
     @Override
     public void nextTuple() {
-        if (queue.size() > 0) {
+        // if (queue.size() > 0) { //从队列里取数并发送，没有观察到Storm UI中的日志，不知道什么原因
+        //     try {
+        //         String message = queue.take();
+        //         collector.emit(new Values(message));
+        //         LOGGER.info("【AccessLogKafkaSpout发射出去一条日志】message=" + message);
+        //     } catch (Exception e) {
+        //         e.printStackTrace();
+        //     }
+        // } else {
+        //     Utils.sleep(100);
+        // }
+
+        //4.循环消费
+        while (true) {
             try {
-                String message = queue.take();
-                collector.emit(new Values(message));
-                LOGGER.info("【AccessLogKafkaSpout发射出去一条日志】message=" + message);
+                // 调用poll输出数据并提交offset
+                msgList = consumer.poll(100);
+                if (null != msgList && !msgList.isEmpty()) {
+                    String message = "";
+                    List<JSONObject> list = new ArrayList<>();
+                    for (ConsumerRecord<String, String> record : msgList) {
+                        // 原始数据
+                        message = record.value();
+                        if (null == message || "".equals(message.trim())) {
+                            continue;
+                        }
+                        /**
+                         * 【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】
+                         * message={"request_module":"product_detail_info","raw_reader":"GET \/product?productId=7&shopId=1 HTTP\/1.1\r\nHost: 192.168.133.133\r\nUser-Agent: lua-resty-http\/0.16.1 (Lua) ngx_lua\/9014\r\n\r\n","http_version":1.1,"method":"GET","uri_args":{"productId":"7","shopId":"1"},"headers":{"host":"192.168.133.133","user-agent":"lua-resty-http\/0.16.1 (Lua) ngx_lua\/9014"}}
+                         */
+                        LOGGER.info("【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】message=" + message);
+                        try {
+                            list.add(JSON.parseObject(message));
+                        } catch (Exception e) {
+                            LOGGER.error("数据格式不符!数据:{}", message);
+                            e.printStackTrace();
+                        }
+                    }
+                    if (list.size() > 0) {
+                        for (JSONObject jsonObject : list) {
+                            //发送到bolt中
+                            this.collector.emit(new Values(JSON.toJSONString(jsonObject)));
+                            LOGGER.info("【AccessLogKafkaSpout发射出去一条日志】message=" + jsonObject);
+                        }
+                    }
+                    //consumer.commitSync();
+                    // 异步提交
+                    consumer.commitAsync();
+                } else {
+                    // TimeUnit.SECONDS.sleep(3);
+                    // LOGGER.info("未拉取到数据...");
+                }
             } catch (Exception e) {
-                e.printStackTrace();
+                LOGGER.error("消息队列处理异常!", e);
+                try {
+                    TimeUnit.SECONDS.sleep(10);
+                } catch (InterruptedException e1) {
+                    LOGGER.error("暂停失败!", e1);
+                }
             }
-        } else {
-            Utils.sleep(100);
         }
+
+
     }
 
     @Override
@@ -84,7 +137,7 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
         //3.订阅topic
         this.consumer.subscribe(Arrays.asList(topic));
         LOGGER.info("消息队列[" + topic + "] 开始初始化...");
-        //4.循环消费
+/*        //4.循环消费
         while (true) {
             try {
                 // 调用poll输出数据并提交offset
@@ -98,6 +151,10 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
                         if (null == message || "".equals(message.trim())) {
                             continue;
                         }
+                        *//**
+                         * 【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】
+                         * message={"request_module":"product_detail_info","raw_reader":"GET \/product?productId=7&shopId=1 HTTP\/1.1\r\nHost: 192.168.133.133\r\nUser-Agent: lua-resty-http\/0.16.1 (Lua) ngx_lua\/9014\r\n\r\n","http_version":1.1,"method":"GET","uri_args":{"productId":"7","shopId":"1"},"headers":{"host":"192.168.133.133","user-agent":"lua-resty-http\/0.16.1 (Lua) ngx_lua\/9014"}}
+                         *//*
                         LOGGER.info("【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】message=" + message);
                         try {
                             queue.put(message);
@@ -110,8 +167,8 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
                     // 异步提交
                     consumer.commitAsync();
                 } else {
-                    TimeUnit.SECONDS.sleep(3);
-                    LOGGER.info("未拉取到数据...");
+                    // TimeUnit.SECONDS.sleep(3);
+                    // LOGGER.info("未拉取到数据...");
                 }
             } catch (Exception e) {
                 LOGGER.error("消息队列处理异常!", e);
@@ -121,7 +178,7 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
                     LOGGER.error("暂停失败!", e1);
                 }
             }
-        }
+        }*/
     }
 
 }

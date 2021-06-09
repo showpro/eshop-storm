@@ -180,7 +180,7 @@ public class ProductCountBolt extends BaseRichBolt {
                                 // 然后反向推送到所有的后端应用nginx服务器上去
                                 String[] appNginxURLs = new String[]{
                                     "http://192.168.133.133/hot?productId=" + productCountEntry.getKey() + "&" + productInfo,
-                                    "http://192.168.133.129/hot?productId=" + productCountEntry.getKey() + "&" + productInfo
+                                    "http://192.168.133.128/hot?productId=" + productCountEntry.getKey() + "&" + productInfo
                                 };
 
                                 for(String appNginxURL : appNginxURLs) {
