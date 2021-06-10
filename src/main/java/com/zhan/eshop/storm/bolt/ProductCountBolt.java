@@ -144,7 +144,7 @@ public class ProductCountBolt extends BaseRichBolt {
                     LOGGER.info("【HotProductFindThread全局排序后的结果】productCountList=" + productCountList);
 
                     // 2、计算出95%的商品的访问次数的平均值
-                    int calculateCount = (int)Math.floor(productCountList.size() * 0.95);
+                    int calculateCount = (int)Math.floor(productCountList.size() * 0.95);//向下取整
 
                     Long totalCount = 0L;
                     for(int i = productCountList.size() - 1; i >= productCountList.size() - calculateCount; i--) {//比如productCountList大小10个，calculateCount=7，遍历最后7个，那么从第4个开始往后遍历，下标为3
@@ -152,7 +152,7 @@ public class ProductCountBolt extends BaseRichBolt {
                         totalCount += productCountList.get(i).getValue();
                     }
 
-                    // 算平均值
+                    // 算平均值  calculateCount != 0  java.lang.ArithmeticException
                     Long avgCount = totalCount / calculateCount;
 
                     LOGGER.info("【HotProductFindThread计算出95%的商品的访问次数平均值】avgCount=" + avgCount);

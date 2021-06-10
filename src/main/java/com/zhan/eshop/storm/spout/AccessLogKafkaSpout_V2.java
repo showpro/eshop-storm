@@ -20,13 +20,13 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * spout从kafka获取数据
+ * spout从kafka获取数据(成功完成实验效果)
  */
-public class AccessLogKafkaSpout_v2 extends BaseRichSpout {
+public class AccessLogKafkaSpout_V2 extends BaseRichSpout {
 
     private static final long serialVersionUID = 8698470299234327074L;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(AccessLogKafkaSpout_v2.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(AccessLogKafkaSpout_V2.class);
 
     private ArrayBlockingQueue<String> queue = new ArrayBlockingQueue<String>(1000);
 

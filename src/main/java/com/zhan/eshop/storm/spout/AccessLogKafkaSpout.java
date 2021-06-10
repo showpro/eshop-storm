@@ -4,8 +4,6 @@ import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.zhan.eshop.storm.constant.Constants;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -47,18 +45,49 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
 
     @Override
     public void nextTuple() {
-        if (queue.size() > 0) {
-            // 没有观察到Storm UI中的日志，不知道什么原因？
+        //4.循环消费
+        while (true) {
             try {
-                // take(): 获取并移除此队列的头部，队列没有数据一直等待 。queue的长度 == 0 的时候，一直阻塞
-                String message = queue.take();
-                collector.emit(new Values(message));
-                LOGGER.info("【AccessLogKafkaSpout发射出去一条日志】message=" + message);
+                // 调用poll输出数据并提交offset
+                msgList = consumer.poll(100);
+                if (null != msgList && !msgList.isEmpty()) {
+                    String message = "";
+                    for (ConsumerRecord<String, String> record : msgList) {
+                        // 原始数据
+                        message = record.value();
+                        if (null == message || "".equals(message.trim())) {
+                            continue;
+                        }
+                        // 新启动一个线程去处理
+                        new Thread(new KafkaMessageProcessor(record)).start();
+                    }
+
+                    LOGGER.info("【queue队列的数据】message=" + queue +"大小=" + queue.size());
+                    if (queue.size() > 0) {
+                        // 没有观察到Storm UI中的日志，不知道什么原因？
+                        try {
+                            // take(): 获取并移除此队列的头部，队列没有数据一直等待 。queue的长度 == 0 的时候，一直阻塞
+                            String msg = queue.take();
+                            collector.emit(new Values(msg));
+                            LOGGER.info("【AccessLogKafkaSpout发射出去一条日志】message=" + msg);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    } else {
+                        Utils.sleep(100);
+                    }
+
+                    // 异步提交
+                    consumer.commitAsync();
+                }
             } catch (Exception e) {
-                e.printStackTrace();
+                LOGGER.error("消息队列处理异常!", e);
+                try {
+                    TimeUnit.SECONDS.sleep(10);
+                } catch (InterruptedException e1) {
+                    LOGGER.error("暂停失败!", e1);
+                }
             }
-        } else {
-            Utils.sleep(100);
         }
     }
 
@@ -87,34 +116,34 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
         //3.订阅topic
         this.consumer.subscribe(Arrays.asList(topic));
         LOGGER.info("消息队列[" + topic + "] 开始初始化...");
-        //4.循环消费
-        while (true) {
-            try {
-                // 调用poll输出数据并提交offset
-                msgList = consumer.poll(100);
-                if (null != msgList && !msgList.isEmpty()) {
-                    String message = "";
-                    for (ConsumerRecord<String, String> record : msgList) {
-                        // 原始数据
-                        message = record.value();
-                        if (null == message || "".equals(message.trim())) {
-                            continue;
-                        }
-                        // 新启动一个线程去处理
-                        new Thread(new KafkaMessageProcessor(record)).start();
-                    }
-                    // 异步提交
-                    consumer.commitAsync();
-                }
-            } catch (Exception e) {
-                LOGGER.error("消息队列处理异常!", e);
-                try {
-                    TimeUnit.SECONDS.sleep(10);
-                } catch (InterruptedException e1) {
-                    LOGGER.error("暂停失败!", e1);
-                }
-            }
-        }
+        // //4.循环消费, 放在这里消费，nextTuple()里从队列取数发射，不行，原因待分析
+        // while (true) {
+        //     try {
+        //         // 调用poll输出数据并提交offset
+        //         msgList = consumer.poll(100);
+        //         if (null != msgList && !msgList.isEmpty()) {
+        //             String message = "";
+        //             for (ConsumerRecord<String, String> record : msgList) {
+        //                 // 原始数据
+        //                 message = record.value();
+        //                 if (null == message || "".equals(message.trim())) {
+        //                     continue;
+        //                 }
+        //                 // 新启动一个线程去处理
+        //                 new Thread(new KafkaMessageProcessor(record)).start();
+        //             }
+        //             // 异步提交
+        //             consumer.commitAsync();
+        //         }
+        //     } catch (Exception e) {
+        //         LOGGER.error("消息队列处理异常!", e);
+        //         try {
+        //             TimeUnit.SECONDS.sleep(10);
+        //         } catch (InterruptedException e1) {
+        //             LOGGER.error("暂停失败!", e1);
+        //         }
+        //     }
+        // }
     }
 
     /**
@@ -131,9 +160,9 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
         @Override
         public void run() {
             String message = new String(record.value());
-            LOGGER.info("【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】message=" + message);
             try {
                 queue.put(message);
+                LOGGER.info("【AccessLogKafkaSpout中的Kafka消费者接收到一条日志】message=" + message);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

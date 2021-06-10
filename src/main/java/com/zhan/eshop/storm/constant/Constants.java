@@ -6,7 +6,7 @@ package com.zhan.eshop.storm.constant;
  * @Date 2021/6/7 9:34
  */
 public class Constants {
-    public  final static String KAFKA_SPOUT="AccessLogKafkaSpout";
+    public  final static String KAFKA_SPOUT="AccessLogKafkaSpout.java";
 
     public  final static String BOLT="INSERT_BOLT";
 
