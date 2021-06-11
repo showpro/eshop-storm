@@ -64,7 +64,7 @@ public class AccessLogKafkaSpout extends BaseRichSpout {
 
                     LOGGER.info("【queue队列的数据】message=" + queue +"大小=" + queue.size());
                     if (queue.size() > 0) {
-                        // 没有观察到Storm UI中的日志，不知道什么原因？
+                        // 没有观察到Storm UI中的日志，不知道什么原因？ 后面将queue数据的put和take放在一个方法内就可以了
                         try {
                             // take(): 获取并移除此队列的头部，队列没有数据一直等待 。queue的长度 == 0 的时候，一直阻塞
                             String msg = queue.take();
